@@ -1,0 +1,8 @@
+cycle_id,healthy_distance,alert,actual_equipment_fault,actual_stability_issue,included_in_equipment_evaluation,sample_type
+2,23.786677297673297,Needs inspection,True,True,False,TruePositive
+5,22.553104863735435,Needs inspection,True,True,False,TruePositive
+9,16.007856897811727,Needs inspection,True,True,False,TruePositive
+11,16.65955458734168,Needs inspection,True,True,False,TruePositive
+29,14.672044050607859,Needs inspection,True,True,False,TruePositive
+1793,0.8739919994969019,Normal,False,False,True,TrueNegative
+1794,0.9932580710533356,Normal,False,False,True,TrueNegative

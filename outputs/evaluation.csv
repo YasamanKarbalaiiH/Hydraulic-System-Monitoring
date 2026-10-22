@@ -1,0 +1,12 @@
+metric,value
+TP,289.0
+FP,0.0
+FN,0.0
+TN,2.0
+Stable test cycles evaluated for equipment faults,291.0
+Unstable test cycles excluded from equipment metrics,150.0
+Detection rate / Recall,1.0
+False alarm rate,0.0
+Precision,1.0
+Accuracy,1.0
+Test cycles with stability issue,150.0
