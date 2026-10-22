@@ -1,9 +1,136 @@
-
 import numpy as np
 import pandas as pd
 import streamlit as st
-
 import logic
+from pathlib import Path
+import base64
+
+font_path = Path(__file__).parent / "assets" / "Vazirmatn-Regular.woff2"
+
+if font_path.exists():
+    encoded_font = base64.b64encode(font_path.read_bytes()).decode("utf-8")
+
+    st.markdown(
+        f"""
+        <style>
+        @font-face {{
+            font-family: 'Vazirmatn';
+            src: url(data:font/woff2;base64,{encoded_font}) format('woff2');
+            font-weight: 100 900;
+            font-style: normal;
+        }}
+
+        /* فونت سراسری برنامه */
+        html,
+        body,
+        [data-testid="stApp"],
+        [data-testid="stAppViewContainer"],
+        [data-testid="stMain"],
+        [data-testid="stSidebar"],
+        [data-testid="stHeader"],
+        [data-testid="stToolbar"],
+        [data-testid="stBottom"],
+        [data-testid="stVerticalBlock"],
+        [data-testid="stHorizontalBlock"],
+        [data-testid="stMarkdown"],
+        [data-testid="stMarkdownContainer"],
+        [data-testid="stCaptionContainer"],
+        [data-testid="stText"],
+        [data-testid="stMetric"],
+        [data-testid="stMetricLabel"],
+        [data-testid="stMetricValue"],
+        [data-testid="stMetricDelta"],
+        [data-testid="stAlert"],
+        [data-testid="stExpander"],
+        [data-testid="stExpanderDetails"],
+        [data-testid="stTabs"],
+        [data-testid="stTab"],
+        [data-testid="stTable"],
+        [data-testid="stDataFrame"],
+        [data-testid="stSelectbox"],
+        [data-testid="stMultiSelect"],
+        [data-testid="stNumberInput"],
+        [data-testid="stTextInput"],
+        [data-testid="stTextArea"],
+        [data-testid="stDateInput"],
+        [data-testid="stTimeInput"],
+        [data-testid="stRadio"],
+        [data-testid="stCheckbox"],
+        [data-testid="stSlider"],
+        [data-testid="stFileUploader"],
+        [data-testid="stForm"],
+        [data-testid="stDialog"],
+        [data-testid="stPopover"],
+        [data-testid="stStatusWidget"],
+        [data-testid="stNotification"],
+        button,
+        input,
+        textarea,
+        select,
+        option,
+        label,
+        p,
+        a,
+        li,
+        ul,
+        ol,
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6,
+        small,
+        summary{{
+            font-family: 'Vazirmatn', sans-serif !important;
+        }}
+
+        /* دکمه‌ها */
+        button,
+        [role="button"] {{
+            font-family: 'Vazirmatn', sans-serif !important;
+        }}
+
+        /* ورودی‌ها و فهرست‌های انتخاب */
+        input,
+        textarea,
+        select,
+        [role="combobox"],
+        [role="listbox"],
+        [role="option"],
+        [role="radio"],
+        [role="checkbox"],
+        [contenteditable="true"] {{
+            font-family: 'Vazirmatn', sans-serif !important;
+        }}
+
+        /* جدول‌ها */
+        [data-testid="stDataFrame"] *,
+        [data-testid="stTable"] * {{
+            font-family: 'Vazirmatn', sans-serif !important;
+        }}
+
+        /* تیترها */
+        h1, h2, h3, h4, h5, h6 {{
+            font-weight: 600 !important;
+            line-height: 1.7 !important;
+        }}
+
+        /* متن عادی */
+        p, label, li {{
+            font-weight: 400;
+            line-height: 1.8;
+        }}
+
+        /* کدها با فونت مناسب کدنویسی */
+        code, pre {{
+            font-family: Consolas, monospace !important;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 
 st.set_page_config(
