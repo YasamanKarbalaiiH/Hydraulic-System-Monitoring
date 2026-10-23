@@ -6,6 +6,7 @@ from pathlib import Path
 import base64
 
 font_path = Path(__file__).parent / "assets" / "Vazirmatn-Regular.woff2"
+OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 
 if font_path.exists():
     encoded_font = base64.b64encode(font_path.read_bytes()).decode("utf-8")
@@ -152,6 +153,63 @@ st.markdown(
         padding: 16px;
         border-radius: 12px;
         border: 1px solid rgba(128, 128, 128, 0.18);
+    }
+
+    /* Right-to-left layout for Persian UI */
+    html, body, [data-testid="stApp"], [data-testid="stAppViewContainer"] {
+        direction: rtl;
+    }
+
+    [data-testid="stSidebar"] {
+        direction: rtl;
+        text-align: right;
+    }
+
+    [data-testid="stMain"] {
+        direction: rtl;
+        text-align: right;
+    }
+
+    /* Headings, paragraphs, captions and labels */
+    h1, h2, h3, h4, h5, h6,
+    p, label, .stMarkdown, .stCaption,
+    [data-testid="stWidgetLabel"] {
+        direction: rtl;
+        text-align: right;
+    }
+
+    /* Input controls */
+    input, textarea, select {
+        direction: rtl;
+        text-align: right;
+    }
+
+    /* Keep tables readable without reversing numbers or feature names */
+    [data-testid="stDataFrame"],
+    [data-testid="stTable"] {
+        direction: ltr;
+    }
+
+    [data-testid="stDataFrame"] th,
+    [data-testid="stDataFrame"] td,
+    [data-testid="stTable"] th,
+    [data-testid="stTable"] td {
+        text-align: right;
+    }
+
+    /* Buttons */
+    .stButton {
+        direction: rtl;
+        text-align: right;
+    }
+    /* Increase spacing between radio circles and labels */
+    [data-testid="stSidebar"] [role="radiogroup"] label > div:first-child {
+        margin-left: 10px !important;
+    }
+    /* Alerts and information messages */
+    [data-testid="stAlert"] {
+        direction: rtl;
+        text-align: right;
     }
 
     section[data-testid="stSidebar"] {
@@ -335,7 +393,8 @@ section = st.sidebar.radio(
         "چرخه‌های مشابه",
         "تحلیل پیشرفته",
         "هشدارها و ارزیابی",
-        "ساختار داده‌ها"
+        "ساختار داده‌ها",
+         "دانلود همه نتایج",
     ],
     index=0
 )
@@ -635,6 +694,51 @@ elif section == "بررسی چرخه":
                 width="stretch"
             )
 
+elif section == "دانلود همه نتایج":
+    st.title("دانلود همه نتایج")
+
+    if st.button("به‌روزرسانی فهرست", type="primary"):
+        st.rerun()
+
+    output_files = sorted(
+        [
+            file_path
+            for file_path in OUTPUT_DIR.iterdir()
+            if file_path.is_file()
+            and file_path.suffix.lower() == ".csv"
+        ],
+        key=lambda file_path: file_path.name.lower()
+    )
+
+    if not output_files:
+        st.info("هنوز فایلی برای دانلود وجود ندارد.")
+    else:
+        st.write(f"تعداد فایل‌های موجود: {len(output_files)}")
+
+        for file_path in output_files:
+            with st.container(border=True):
+                col1, col2 = st.columns([3, 1])
+
+                with col1:
+                    st.write(f"**{file_path.name}**")
+                    st.caption(
+                        f"حجم فایل: "
+                        f"{file_path.stat().st_size / 1024:.2f} KB"
+                    )
+
+                with col2:
+                    st.download_button(
+                        label="دانلود",
+                        data=file_path.read_bytes(),
+                        file_name=file_path.name,
+                        mime="text/csv",
+                        key=(
+                            f"download_{file_path.name}_"
+                            f"{file_path.stat().st_mtime_ns}"
+                        ),
+                        use_container_width=True,
+                    )
+
 
 elif section == "تحلیل ویژگی‌ها":
     st.subheader("تحلیل آماری ویژگی‌ها")
@@ -727,21 +831,27 @@ elif section == "چرخه‌های مشابه":
     test_cycle_ids = sorted((test_indices + 1).tolist())
 
     query_cycle_id = st.selectbox(
-        "چرخه مورد مقایسه را از مجموعه آزمون انتخاب کن",
+        "شماره چرخه تست را انتخاب کن",
         options=test_cycle_ids
+    )
+
+    st.caption(
+        "چرخه انتخاب‌شده با تمام چرخه‌های مجموعه آموزش "
+        "مقایسه می‌شود."
     )
 
     if st.button("مقایسه چرخه", type="primary"):
         try:
             similar = logic.find_similar_cycles(
-                query_cycle_id,
-                train_indices,
-                test_indices,
-                X_train_scaled,
-                X_test_scaled
+                query_cycle_id=query_cycle_id,
+                train_indices=train_indices,
+                test_indices=test_indices,
+                X_train_scaled=X_train_scaled,
+                X_test_scaled=X_test_scaled
             )
 
             st.markdown("#### پنج چرخه نزدیک‌تر با فاصله اقلیدسی")
+
             st.dataframe(
                 similar["distance_df"],
                 hide_index=True,
@@ -749,52 +859,120 @@ elif section == "چرخه‌های مشابه":
             )
 
             st.markdown("#### پنج چرخه مشابه‌تر با شباهت کسینوسی")
+
             st.dataframe(
                 similar["cosine_df"],
                 hide_index=True,
                 width="stretch"
             )
 
-            nearest_pos = int(similar["nearest_positions"][0])
-            nearest_cycle_id = int(train_indices[nearest_pos] + 1)
-
-            st.info(
-                f"چرخه {query_cycle_id} از نظر فاصله اقلیدسی "
-                f"به چرخه {nearest_cycle_id} نزدیک‌تر است"
-                "شباهت به معنی سالم‌بودن قطعی نیست"
+            nearest_position = int(
+                similar["nearest_positions"][0]
             )
+
+            nearest_cycle_id = int(
+                train_indices[nearest_position] + 1
+            )
+
+            query_scaled = similar["query_scaled"]
+
+            nearest_scaled = X_train_scaled[nearest_position]
 
             differences = np.abs(
-                similar["query_scaled"] - X_train_scaled[nearest_pos]
+                query_scaled - nearest_scaled
             )
 
-            top = np.argsort(differences)[::-1][:5]
+            top_indices = np.argsort(differences)[::-1][:5]
 
             diff_df = pd.DataFrame({
-                "ویژگی": [feature_names[i] for i in top],
-                "اختلاف مطلق استانداردشده": differences[top]
+                "ویژگی": [
+                    feature_names[i] for i in top_indices
+                ],
+                "مقدار چرخه انتخاب‌شده": [
+                    query_scaled[i] for i in top_indices
+                ],
+                "مقدار چرخه مشابه": [
+                    nearest_scaled[i] for i in top_indices
+                ],
+                "اختلاف مطلق استانداردشده": [
+                    differences[i] for i in top_indices
+                ]
             })
 
+            # Save the selected cycle's similarity results.
+            similar["distance_df"].to_csv(
+                OUTPUT_DIR / "similar_cycles.csv",
+                index=False,
+                encoding="utf-8-sig"
+            )
+
+            similar["cosine_df"].to_csv(
+                OUTPUT_DIR /"similar_cycles_cosine.csv",
+                index=False,
+                encoding="utf-8-sig"
+            )
+
+            diff_df.to_csv(
+                OUTPUT_DIR /"top_feature_differences.csv",
+                index=False,
+                encoding="utf-8-sig"
+            )
+
+            st.success(
+                f"نتایج چرخه {query_cycle_id} در فایل‌های CSV ذخیره شدند."
+            )
+
             st.markdown("#### پنج ویژگی با بیشترین اختلاف")
+
             st.dataframe(
                 diff_df,
                 hide_index=True,
                 width="stretch"
             )
 
-            print("\n--- Similar-cycle analysis ---")
-            print(f"Query cycle: {query_cycle_id}")
-            print("Nearest by Euclidean distance:")
-            print(similar["distance_df"].to_string(index=False))
-            print("Most similar by cosine similarity:")
-            print(similar["cosine_df"].to_string(index=False))
-            print("Largest standardized feature differences:")
+            st.info(
+                f"چرخه انتخاب‌شده: {query_cycle_id} | "
+                f"نزدیک‌ترین چرخه آموزشی: {nearest_cycle_id}"
+            )
+
+            st.caption(
+                "شباهت ویژگی‌ها به معنی سالم بودن قطعی "
+                "چرخه نیست؛ وضعیت واقعی باید جداگانه بررسی شود."
+            )
+
+            print("\n" + "=" * 65)
+            print("SIMILAR-CYCLE ANALYSIS")
+            print("=" * 65)
+
+            print(f"Selected test cycle: {query_cycle_id}")
+
+            print("\nFive nearest cycles by Euclidean distance:")
+            print(
+                similar["distance_df"].to_string(index=False)
+            )
+
+            print("\nFive most similar cycles by cosine similarity:")
+            print(
+                similar["cosine_df"].to_string(index=False)
+            )
+
+            print("\nFive features with the largest differences:")
             print(diff_df.to_string(index=False))
 
-        except Exception as error:
-            st.error(f"خطا در مقایسه چرخه‌ها: {error}")
-            print(f"SIMILAR-CYCLE ERROR: {error}")
+            print("\n" + "=" * 65)
+            print("SIMILAR-CYCLE ANALYSIS COMPLETE")
+            print("=" * 65 + "\n")
 
+        except Exception as error:
+            st.error(
+                f"خطا در مقایسه چرخه‌ها: "
+                f"{type(error).__name__}: {error}"
+            )
+
+            print(
+                f"SIMILAR-CYCLE ERROR: "
+                f"{type(error).__name__}: {error}"
+            )
 
 elif section == "تحلیل پیشرفته":
     st.subheader("تحلیل‌های تکمیلی")

@@ -19,7 +19,7 @@ IDEAL_PROFILE = np.array([100.0, 100.0, 0.0, 130.0, 0.0])
 
 
 def extract_features(sensor_data):
-    """Extract features from raw data."""
+    """Return five statistical features for each cycle of one sensor."""
     sensor_data = np.asarray(sensor_data, dtype=float)
     return np.column_stack((
         np.mean(sensor_data, axis=1),
@@ -169,6 +169,22 @@ def prepare_comparison(features, profile=None, random_seed=42, train_fraction=0.
         "constant_in_training": train_std == 0,
     })
 
+    variable_columns = train_std > 0
+    standardized_train_mean = np.mean(X_train_scaled, axis=0)
+    standardized_train_std = np.std(X_train_scaled, axis=0)
+    standardization_check = pd.DataFrame({
+        "feature_index": np.arange(features.shape[1]),
+        "training_mean_after_scaling": standardized_train_mean,
+        "training_std_after_scaling": standardized_train_std,
+        "is_constant_in_training": ~variable_columns,
+        "mean_approximately_zero": np.isclose(
+            standardized_train_mean, 0.0, atol=1e-10
+        ) | ~variable_columns,
+        "std_approximately_one": np.isclose(
+            standardized_train_std, 1.0, atol=1e-10
+        ) | ~variable_columns,
+    })
+
     return {
         "train_indices": train_indices,
         "test_indices": test_indices,
@@ -178,6 +194,7 @@ def prepare_comparison(features, profile=None, random_seed=42, train_fraction=0.
         "train_std": train_std,
         "safe_std": safe_std,
         "standardization_params": params,
+        "standardization_check": standardization_check,
     }
 
 
@@ -287,24 +304,52 @@ def find_similar_cycles(query_cycle_id, train_indices, test_indices,
     }
 
 
-def calculate_cycle_changes(X_scaled, feature_names, top_n=10):
-    """Rank adjacent cycle pairs by Euclidean distance in standardized feature space."""
+def calculate_cycle_changes(X_scaled, feature_names, profile=None,
+                            top_n=10, top_features_n=5):
+    """Rank adjacent cycles in original order and report their largest feature changes."""
+    X_scaled = np.asarray(X_scaled, dtype=float)
+    if X_scaled.ndim != 2:
+        raise ValueError("ماتریس ویژگی‌های استانداردشده باید دوبعدی باشد.")
+    if X_scaled.shape[1] != len(feature_names):
+        raise ValueError("تعداد نام ویژگی‌ها با تعداد ستون‌های ماتریس سازگار نیست.")
+    if profile is not None and len(profile) != len(X_scaled):
+        raise ValueError("تعداد ردیف‌های profile با تعداد چرخه‌ها سازگار نیست.")
+
+    columns = [
+        "cycle_from", "cycle_to", "change_distance", "largest_change_feature"
+    ]
+    for rank in range(1, top_features_n + 1):
+        columns.extend([f"feature_{rank}", f"feature_{rank}_difference"])
+
     if len(X_scaled) < 2:
-        return pd.DataFrame(columns=[
-            "cycle_from", "cycle_to", "change_distance", "largest_change_feature"
-        ])
+        return pd.DataFrame(columns=columns)
+
     differences = np.diff(X_scaled, axis=0)
     distances = np.linalg.norm(differences, axis=1)
-    largest_feature_indices = np.argmax(np.abs(differences), axis=1)
     order = np.argsort(distances)[::-1][:top_n]
-    return pd.DataFrame({
-        "cycle_from": order + 1,
-        "cycle_to": order + 2,
-        "change_distance": distances[order],
-        "largest_change_feature": [
-            feature_names[largest_feature_indices[i]] for i in order
-        ],
-    })
+    rows = []
+
+    for pair_index in order:
+        absolute_differences = np.abs(differences[pair_index])
+        top_indices = np.argsort(absolute_differences)[::-1][:top_features_n]
+        row = {
+            "cycle_from": int(pair_index + 1),
+            "cycle_to": int(pair_index + 2),
+            "change_distance": float(distances[pair_index]),
+            "largest_change_feature": feature_names[int(top_indices[0])],
+        }
+        for rank, feature_index in enumerate(top_indices, start=1):
+            row[f"feature_{rank}"] = feature_names[int(feature_index)]
+            row[f"feature_{rank}_difference"] = float(
+                differences[pair_index, feature_index]
+            )
+        if profile is not None:
+            for profile_index, profile_name in enumerate(PROFILE_NAMES):
+                row[f"{profile_name}_from"] = profile[pair_index, profile_index]
+                row[f"{profile_name}_to"] = profile[pair_index + 1, profile_index]
+        rows.append(row)
+
+    return pd.DataFrame(rows)
 
 
 def calculate_healthy_distances(features, profile, train_indices, test_indices,
@@ -482,10 +527,12 @@ def run_analysis(dataset_dir=DATASET_DIR, threshold_95=None, threshold_99=None,
     )
     independent = select_independent_features(X_train_scaled, feature_names)
 
-    changes = calculate_cycle_changes(
+    all_scaled = (
         comparison["all_scaled"] if "all_scaled" in comparison
-        else _assemble_all_scaled(comparison, len(features)),
-        feature_names
+        else _assemble_all_scaled(comparison, len(features))
+    )
+    changes = calculate_cycle_changes(
+        all_scaled, feature_names, profile=profile, top_n=10, top_features_n=5
     )
     
 
@@ -516,6 +563,30 @@ def run_analysis(dataset_dir=DATASET_DIR, threshold_95=None, threshold_99=None,
         "distance_all_features": all_distances,
         "distance_independent_features": independent_distances,
     }).sort_values("distance_all_features").reset_index(drop=True)
+
+    default_query_cycle_id = int(test_indices[0] + 1)
+    default_similar = find_similar_cycles(
+        query_cycle_id=default_query_cycle_id,
+        train_indices=train_indices,
+        test_indices=test_indices,
+        X_train_scaled=X_train_scaled,
+        X_test_scaled=X_test_scaled,
+    )
+    nearest_position = int(default_similar["nearest_positions"][0])
+    nearest_train_row = X_train_scaled[nearest_position]
+    query_vector = default_similar["query_scaled"]
+    feature_differences = np.abs(query_vector - nearest_train_row)
+    top_difference_indices = np.argsort(feature_differences)[::-1][:5]
+    top_feature_differences = pd.DataFrame({
+        "feature": [feature_names[i] for i in top_difference_indices],
+        "query_cycle_id": default_query_cycle_id,
+        "nearest_cycle_id": int(train_indices[nearest_position] + 1),
+        "query_scaled_value": [query_vector[i] for i in top_difference_indices],
+        "nearest_scaled_value": [nearest_train_row[i] for i in top_difference_indices],
+        "absolute_standardized_difference": [
+            feature_differences[i] for i in top_difference_indices
+        ],
+    })
 
     # Verify a feature calculation on the first sensor and report the maxima.
     ps1 = sensor_data["PS1"]
@@ -551,6 +622,10 @@ def run_analysis(dataset_dir=DATASET_DIR, threshold_95=None, threshold_99=None,
         "evaluation": alert_evaluation["evaluation"],
         "evaluation_summary": alert_evaluation,
         "distance_comparison": distance_comparison,
+        "standardization_check": comparison["standardization_check"],
+        "default_similar_cycles": default_similar["distance_df"],
+        "default_similar_cycles_cosine": default_similar["cosine_df"],
+        "default_top_feature_differences": top_feature_differences,
         "manual_verification": manual_verification,
         "max_TS1_mean": {
             "cycle_id": max_ts1_index + 1,
@@ -580,6 +655,18 @@ def save_outputs(results):
     results["standardization_params"].assign(
         feature_name=results["feature_names"]
     ).to_csv(OUTPUT_DIR / "standardization_params.csv", index=False)
+    results["standardization_check"].assign(
+        feature_name=results["feature_names"]
+    ).to_csv(OUTPUT_DIR / "standardization_check.csv", index=False)
+    results["default_similar_cycles"].to_csv(
+        OUTPUT_DIR / "similar_cycles.csv", index=False
+    )
+    results["default_similar_cycles_cosine"].to_csv(
+        OUTPUT_DIR / "similar_cycles_cosine.csv", index=False
+    )
+    results["default_top_feature_differences"].to_csv(
+        OUTPUT_DIR / "top_feature_differences.csv", index=False
+    )
 
     train_df = pd.DataFrame(results["X_train_scaled"], columns=results["feature_names"])
     train_df.insert(0, "cycle_id", results["train_indices"] + 1)
@@ -617,6 +704,11 @@ def print_terminal_report(results):
     print(f"Feature matrix: {results['features'].shape}")
     print(f"Profile matrix: {results['profile'].shape}")
     print(f"Train/test rows: {len(results['train_indices'])}/{len(results['test_indices'])}")
+    check = results["standardization_check"]
+    print(
+        "Standardization check passed: "
+        f"{bool(check['mean_approximately_zero'].all() and check['std_approximately_one'].all())}"
+    )
     print(f"Constant feature columns in training: {len(results['independent']['constant_columns'])}")
     print(f"Numerical matrix rank: {results['independent']['matrix_rank']}")
     print(f"Independent features retained: {len(results['independent']['independent_indices'])}")
